@@ -12,8 +12,8 @@ const name be //;World;//
 const greeting be //;Hello, [name]!;//
 console.log[greeting]
 
--- Function
-fn double x to x mul 2
+-- Named functions need "to return" for a return value
+fn double x to return x mul 2
 console.log[double[21]]
 
 -- Range
@@ -252,12 +252,14 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 				<span class="hint-text">Ctrl+Enter to run</span>
 			</div>
 			<div class="editor-wrap">
-				<Editor
-					value={currentCode}
-					onvalue={setCurrentCode}
-					onRun={() => doRun(mode)}
-					lang="purus"
-				/>
+				{#key currentFile}
+					<Editor
+						value={currentCode}
+						onvalue={setCurrentCode}
+						onRun={() => doRun(mode)}
+						lang="purus"
+					/>
+				{/key}
 			</div>
 		</div>
 
