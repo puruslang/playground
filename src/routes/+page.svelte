@@ -22,9 +22,10 @@ for n in nums
 `;
 
 	let code = $state(DEFAULT_CODE);
-	let version = $state('');
+	let version = $state('latest');
 	let mode = $state<'node' | 'browser'>('node');
 	let versions = $state<VersionEntry[]>([]);
+	let versionsLoading = $state(true);
 	let running = $state(false);
 
 	let compiled = $state('');
@@ -46,17 +47,19 @@ for n in nums
 		try {
 			const res = await fetch('/api/versions');
 			const data: VersionEntry[] = await res.json();
-			versions = data;
+			// Set version BEFORE updating versions so the select renders with the right value
 			if (p.get('v')) {
 				version = p.get('v')!;
-			} else if (versions.length > 0) {
-				// Default to latest non-deprecated, or first if all deprecated
-				const latest = versions.find((v) => !v.deprecated);
-				version = (latest ?? versions[0]).version;
+			} else if (data.length > 0) {
+				const latest = data.find((v) => !v.deprecated);
+				version = (latest ?? data[0]).version;
 			}
+			versions = data;
 		} catch {
 			versions = [];
-			version = version || 'latest';
+			// version keeps its 'latest' default
+		} finally {
+			versionsLoading = false;
 		}
 	});
 
@@ -160,24 +163,23 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 
 		<div class="ml-auto flex items-center gap-2 flex-wrap">
 			<!-- Version selector -->
-			{#if versions.length > 0}
-				<select
-					bind:value={version}
-					class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700 cursor-pointer"
-				>
+			<select
+				bind:value={version}
+				disabled={versionsLoading}
+				class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700 cursor-pointer disabled:opacity-50"
+			>
+				{#if versionsLoading}
+					<option value="latest">Loading…</option>
+				{:else if versions.length === 0}
+					<option value="latest">latest</option>
+				{:else}
 					{#each versions as v (v.version)}
 						<option value={v.version}>
 							{v.version}{v.deprecated ? ' (deprecated)' : ''}
 						</option>
 					{/each}
-				</select>
-			{:else}
-				<input
-					bind:value={version}
-					placeholder="version (e.g. 1.0.1)"
-					class="w-36 rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none placeholder-zinc-600"
-				/>
-			{/if}
+				{/if}
+			</select>
 
 			<!-- Mode selector -->
 			<div class="flex rounded bg-zinc-800 text-sm">
