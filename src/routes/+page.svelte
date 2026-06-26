@@ -211,12 +211,12 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 	<!-- Main split pane -->
 	<div class="flex flex-1 overflow-hidden min-h-0">
 		<!-- Editor pane -->
-		<div class="flex w-1/2 min-w-0 flex-col border-r border-zinc-800">
+		<div class="flex w-1/2 min-w-0 flex-col border-r border-zinc-800" style="min-height:0;">
 			<div class="shrink-0 border-b border-zinc-800 px-4 py-1.5 text-xs text-zinc-500 flex items-center gap-2">
 				<span>main.purus</span>
 				<span class="ml-auto opacity-40">Ctrl+Enter to run</span>
 			</div>
-			<div class="flex-1 min-h-0" style="overflow: hidden;">
+			<div style="flex:1; min-height:0; overflow:hidden;">
 				<Editor bind:value={code} onRun={run} />
 			</div>
 		</div>
