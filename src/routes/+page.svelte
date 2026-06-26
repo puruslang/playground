@@ -1,11 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import Editor from '$lib/components/Editor.svelte';
+	import type { PageData } from './$types';
+	import type { VersionEntry } from '$lib/types';
 
-	interface VersionEntry {
-		version: string;
-		deprecated: boolean;
-	}
+	let { data }: { data: PageData } = $props();
 
 	const DEFAULT_CODE = `-- Purus Playground
 const name be //;World;//
@@ -21,11 +20,13 @@ for n in nums
   console.log[n]
 `;
 
+	// versions come from server load — available immediately on render
+	const versions: VersionEntry[] = data.versions ?? [];
+	const defaultVersion = versions.find((v) => !v.deprecated)?.version ?? versions[0]?.version ?? 'latest';
+
 	let code = $state(DEFAULT_CODE);
-	let version = $state('latest');
+	let version = $state(defaultVersion);
 	let mode = $state<'node' | 'browser'>('node');
-	let versions = $state<VersionEntry[]>([]);
-	let versionsLoading = $state(true);
 	let running = $state(false);
 
 	let compiled = $state('');
@@ -35,32 +36,14 @@ for n in nums
 
 	let iframeRef: HTMLIFrameElement;
 
-	onMount(async () => {
-		// Restore from URL params first
+	onMount(() => {
+		// Restore from URL params
 		const p = new URLSearchParams(window.location.search);
 		if (p.get('code')) {
 			try { code = decodeURIComponent(escape(atob(p.get('code')!))); } catch {}
 		}
 		if (p.get('m') === 'browser') mode = 'browser';
-
-		// Fetch versions
-		try {
-			const res = await fetch('/api/versions');
-			const data: VersionEntry[] = await res.json();
-			// Set version BEFORE updating versions so the select renders with the right value
-			if (p.get('v')) {
-				version = p.get('v')!;
-			} else if (data.length > 0) {
-				const latest = data.find((v) => !v.deprecated);
-				version = (latest ?? data[0]).version;
-			}
-			versions = data;
-		} catch {
-			versions = [];
-			// version keeps its 'latest' default
-		} finally {
-			versionsLoading = false;
-		}
+		if (p.get('v')) version = p.get('v')!;
 	});
 
 	async function run() {
@@ -165,12 +148,9 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 			<!-- Version selector -->
 			<select
 				bind:value={version}
-				disabled={versionsLoading}
-				class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700 cursor-pointer disabled:opacity-50"
+				class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700 cursor-pointer"
 			>
-				{#if versionsLoading}
-					<option value="latest">Loading…</option>
-				{:else if versions.length === 0}
+				{#if versions.length === 0}
 					<option value="latest">latest</option>
 				{:else}
 					{#each versions as v (v.version)}

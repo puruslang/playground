@@ -1,12 +1,8 @@
 import { json } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
+import type { VersionEntry } from '$lib/types';
 
 const CACHE_TTL = 5 * 60 * 1000; // 5 min
-
-interface VersionEntry {
-	version: string;
-	deprecated: boolean;
-}
 
 let cached: VersionEntry[] | null = null;
 let cacheTime = 0;
