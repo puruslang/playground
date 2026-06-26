@@ -136,7 +136,7 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 <div class="flex h-screen flex-col bg-zinc-950 text-zinc-100" style="font-family: system-ui, sans-serif;">
 	<!-- Header -->
 	<header class="flex shrink-0 items-center gap-3 border-b border-zinc-800 px-4 py-2">
-		<a href="https://purus.work" target="_blank" rel="noopener" class="flex items-center gap-2 hover:opacity-80">
+		<a href="/" class="flex items-center gap-2 hover:opacity-80">
 			<img src="https://raw.githubusercontent.com/puruslang/assets/main/icon.svg" alt="Purus" class="h-6 w-6" />
 			<span class="font-semibold text-white">Purus Playground</span>
 		</a>
