@@ -12,10 +12,11 @@ const name be //;World;//
 const greeting be //;Hello, [name]!;//
 console.log[greeting]
 
--- Try more:
-fn add a; b to a add b
-console.log[add[1; 2]]
+-- Function
+fn double x to x mul 2
+console.log[double[21]]
 
+-- Range
 const nums be [1..5]
 for n in nums
   console.log[n]
