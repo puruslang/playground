@@ -251,7 +251,12 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 				<span class="hint-text">Ctrl+Enter to run</span>
 			</div>
 			<div class="editor-wrap">
-				<Editor value={currentCode} onvalue={setCurrentCode} onRun={() => doRun(mode)} />
+				<Editor
+					value={currentCode}
+					onvalue={setCurrentCode}
+					onRun={() => doRun(mode)}
+					lang="purus"
+				/>
 			</div>
 		</div>
 
@@ -288,7 +293,9 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 					{/if}
 				{:else}
 					{#if compiled}
-						<pre class="compiled">{compiled}</pre>
+						<div style="height:100%; margin:-16px;">
+							<Editor value={compiled} lang="js" readonly />
+						</div>
 					{:else}
 						<p class="placeholder">Compiled JavaScript will appear here.</p>
 					{/if}
@@ -484,6 +491,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 		padding: 16px;
 		font-family: 'Fira Code', ui-monospace, monospace;
 		font-size: 13px;
+		position: relative;
 	}
 	.placeholder { color: #52525b; font-size: 13px; }
 	.placeholder kbd {
