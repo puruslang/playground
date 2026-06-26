@@ -236,7 +236,7 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 				<span>main.purus</span>
 				<span class="ml-auto opacity-40">Ctrl+Enter to run</span>
 			</div>
-			<div class="flex-1 min-h-0">
+			<div class="flex-1 min-h-0" style="overflow: hidden;">
 				<Editor bind:value={code} onRun={run} />
 			</div>
 		</div>
