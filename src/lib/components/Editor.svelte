@@ -1,60 +1,76 @@
 <script lang="ts">
-	let { value = $bindable(''), onRun }: { value: string; onRun?: () => void } = $props();
+	import { onMount, onDestroy, tick } from 'svelte';
+	import { EditorView, basicSetup } from 'codemirror';
+	import { EditorState } from '@codemirror/state';
+	import { keymap } from '@codemirror/view';
+	import { indentWithTab } from '@codemirror/commands';
+	import { javascript } from '@codemirror/lang-javascript';
+	import { oneDark } from '@codemirror/theme-one-dark';
 
-	function onKeydown(e: KeyboardEvent) {
-		// Ctrl+Enter / Cmd+Enter → run
-		if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-			e.preventDefault();
-			onRun?.();
-			return;
-		}
-		// Tab → insert 2 spaces
-		if (e.key === 'Tab') {
-			e.preventDefault();
-			const ta = e.currentTarget as HTMLTextAreaElement;
-			const start = ta.selectionStart;
-			const end = ta.selectionEnd;
-			value = value.slice(0, start) + '  ' + value.slice(end);
-			// Restore cursor after Svelte updates the DOM
-			requestAnimationFrame(() => {
-				ta.selectionStart = ta.selectionEnd = start + 2;
+	let {
+		value = '',
+		onvalue,
+		onRun
+	}: { value: string; onvalue?: (v: string) => void; onRun?: () => void } = $props();
+
+	let container: HTMLDivElement;
+	let view: EditorView;
+	let internalChange = false;
+
+	onMount(async () => {
+		await tick();
+
+		view = new EditorView({
+			parent: container,
+			state: EditorState.create({
+				doc: value,
+				extensions: [
+					basicSetup,
+					javascript(),
+					oneDark,
+					keymap.of([
+						indentWithTab,
+						{
+							key: 'Ctrl-Enter',
+							mac: 'Mod-Enter',
+							run: () => { onRun?.(); return true; }
+						}
+					]),
+					EditorView.updateListener.of((update) => {
+						if (update.docChanged) {
+							internalChange = true;
+							onvalue?.(update.state.doc.toString());
+							internalChange = false;
+						}
+					}),
+					// Per official guide: use ".cm-editor" selector for height
+					EditorView.theme({
+						'.cm-editor': { height: '100%' },
+						'.cm-scroller': {
+							overflow: 'auto',
+							fontFamily: "'Fira Code', 'Cascadia Code', ui-monospace, monospace",
+							fontSize: '14px',
+							lineHeight: '1.6'
+						}
+					})
+				]
+			})
+		});
+	});
+
+	$effect(() => {
+		if (!internalChange && view && value !== view.state.doc.toString()) {
+			view.dispatch({
+				changes: { from: 0, to: view.state.doc.length, insert: value }
 			});
 		}
-	}
+	});
+
+	onDestroy(() => view?.destroy());
 </script>
 
-<textarea
-	bind:value
-	onkeydown={onKeydown}
-	spellcheck="false"
-	autocomplete="off"
-	autocorrect="off"
-	autocapitalize="off"
-	class="editor-textarea"
-	placeholder="-- Write Purus code here…"
-></textarea>
-
-<style>
-	.editor-textarea {
-		display: block;
-		width: 100%;
-		height: 100%;
-		resize: none;
-		border: none;
-		outline: none;
-		padding: 12px 16px;
-		background: #18181b;
-		color: #e4e4e7;
-		font-family: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', ui-monospace, monospace;
-		font-size: 14px;
-		line-height: 1.6;
-		tab-size: 2;
-		white-space: pre;
-		overflow: auto;
-		box-sizing: border-box;
-		caret-color: #f59e0b;
-	}
-	.editor-textarea::selection {
-		background: #3f3f46;
-	}
-</style>
+<!--
+  height:100% works because the parent sets an explicit flex height.
+  overflow:hidden prevents the container from expanding beyond its bounds.
+-->
+<div bind:this={container} style="height:100%; overflow:hidden;"></div>

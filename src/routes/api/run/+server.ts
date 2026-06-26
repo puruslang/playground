@@ -68,7 +68,7 @@ function runInNode(js: string): { stdout: string; stderr: string } {
 		}
 	});
 	try {
-		const script = new vm.Script(js, { timeout: TIMEOUT_MS });
+		const script = new vm.Script(js);
 		script.runInContext(ctx, { timeout: TIMEOUT_MS });
 	} catch (e: unknown) {
 		errs.push(e instanceof Error ? e.message : String(e));
@@ -85,7 +85,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	const { code, version = 'latest', mode = 'node' } = body as {
 		code: string;
 		version?: string;
-		mode?: 'node' | 'browser';
+		mode?: 'node' | 'browser' | 'compile';
 	};
 
 	if (code.length > 50_000) throw error(413, 'Code too large');
@@ -110,6 +110,11 @@ export const POST: RequestHandler = async ({ request }) => {
 			stderr: e instanceof Error ? e.message : String(e),
 			mode
 		});
+	}
+
+	// Compile-only: just return compiled JS, no execution
+	if (mode === 'compile') {
+		return json({ success: true, compiled, stdout: '', stderr: '', mode });
 	}
 
 	if (mode === 'browser') {
