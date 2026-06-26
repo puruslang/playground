@@ -2,6 +2,11 @@
 	import { onMount } from 'svelte';
 	import Editor from '$lib/components/Editor.svelte';
 
+	interface VersionEntry {
+		version: string;
+		deprecated: boolean;
+	}
+
 	const DEFAULT_CODE = `-- Purus Playground
 const name be //;World;//
 const greeting be //;Hello, [name]!;//
@@ -17,9 +22,9 @@ for n in nums
 `;
 
 	let code = $state(DEFAULT_CODE);
-	let version = $state('latest');
+	let version = $state('');
 	let mode = $state<'node' | 'browser'>('node');
-	let versions = $state<string[]>([]);
+	let versions = $state<VersionEntry[]>([]);
 	let running = $state(false);
 
 	let compiled = $state('');
@@ -30,12 +35,28 @@ for n in nums
 	let iframeRef: HTMLIFrameElement;
 
 	onMount(async () => {
+		// Restore from URL params first
+		const p = new URLSearchParams(window.location.search);
+		if (p.get('code')) {
+			try { code = decodeURIComponent(escape(atob(p.get('code')!))); } catch {}
+		}
+		if (p.get('m') === 'browser') mode = 'browser';
+
+		// Fetch versions
 		try {
 			const res = await fetch('/api/versions');
-			versions = await res.json();
-			if (versions.length > 0) version = versions[0];
+			const data: VersionEntry[] = await res.json();
+			versions = data;
+			if (p.get('v')) {
+				version = p.get('v')!;
+			} else if (versions.length > 0) {
+				// Default to latest non-deprecated, or first if all deprecated
+				const latest = versions.find((v) => !v.deprecated);
+				version = (latest ?? versions[0]).version;
+			}
 		} catch {
-			versions = ['latest'];
+			versions = [];
+			version = version || 'latest';
 		}
 	});
 
@@ -51,7 +72,7 @@ for n in nums
 			const res = await fetch('/api/run', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
-				body: JSON.stringify({ code, version, mode })
+				body: JSON.stringify({ code, version: version || 'latest', mode })
 			});
 			const data = await res.json();
 
@@ -74,19 +95,16 @@ for n in nums
 	}
 
 	function runInBrowser(js: string) {
-		const lines: string[] = [];
-		const errs: string[] = [];
-
 		const html = `<!doctype html>
 <html><head><meta charset="utf-8"></head><body>
 <script>
 const __lines = [];
 const __errs = [];
 const _console = {
-  log: (...a) => __lines.push(a.join(' ')),
+  log:   (...a) => __lines.push(a.join(' ')),
   error: (...a) => __errs.push(a.join(' ')),
-  warn: (...a) => __errs.push(a.join(' ')),
-  info: (...a) => __lines.push(a.join(' '))
+  warn:  (...a) => __errs.push(a.join(' ')),
+  info:  (...a) => __lines.push(a.join(' '))
 };
 Object.defineProperty(window, 'console', { value: _console });
 try {
@@ -118,50 +136,48 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 		url.searchParams.set('v', version);
 		url.searchParams.set('m', mode);
 		navigator.clipboard.writeText(url.toString()).catch(() => {});
-		alert('Link copied to clipboard!');
+		copied = true;
+		setTimeout(() => (copied = false), 2000);
 	}
 
-	onMount(() => {
-		const p = new URLSearchParams(window.location.search);
-		if (p.get('code')) {
-			try {
-				code = decodeURIComponent(escape(atob(p.get('code')!)));
-			} catch {}
-		}
-		if (p.get('v')) version = p.get('v')!;
-		if (p.get('m') === 'browser') mode = 'browser';
-	});
+	let copied = $state(false);
 </script>
 
 <svelte:head>
 	<title>Purus Playground</title>
 </svelte:head>
 
-<div class="flex h-screen flex-col bg-zinc-950 text-zinc-100">
+<div class="flex h-screen flex-col bg-zinc-950 text-zinc-100" style="font-family: system-ui, sans-serif;">
 	<!-- Header -->
-	<header class="flex items-center gap-3 border-b border-zinc-800 px-4 py-2">
-		<a href="https://purus.work" target="_blank" rel="noopener" class="flex items-center gap-2">
-			<img
-				src="https://raw.githubusercontent.com/puruslang/assets/main/icon.svg"
-				alt="Purus"
-				class="h-6 w-6"
-			/>
+	<header class="flex shrink-0 items-center gap-3 border-b border-zinc-800 px-4 py-2">
+		<a href="https://purus.work" target="_blank" rel="noopener" class="flex items-center gap-2 hover:opacity-80">
+			<img src="https://raw.githubusercontent.com/puruslang/assets/main/icon.svg" alt="Purus" class="h-6 w-6" />
 			<span class="font-semibold text-white">Purus Playground</span>
 		</a>
 
-		<div class="ml-auto flex items-center gap-2">
+		<a href="https://purus.work/getting-started/installation" target="_blank" rel="noopener"
+			class="text-xs text-zinc-500 hover:text-zinc-300">Docs ↗</a>
+
+		<div class="ml-auto flex items-center gap-2 flex-wrap">
 			<!-- Version selector -->
-			<select
-				bind:value={version}
-				class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700"
-			>
-				{#each versions as v (v)}
-					<option value={v}>{v}</option>
-				{/each}
-				{#if versions.length === 0}
-					<option value="latest">latest</option>
-				{/if}
-			</select>
+			{#if versions.length > 0}
+				<select
+					bind:value={version}
+					class="rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none hover:bg-zinc-700 cursor-pointer"
+				>
+					{#each versions as v (v.version)}
+						<option value={v.version}>
+							{v.version}{v.deprecated ? ' (deprecated)' : ''}
+						</option>
+					{/each}
+				</select>
+			{:else}
+				<input
+					bind:value={version}
+					placeholder="version (e.g. 1.0.1)"
+					class="w-36 rounded bg-zinc-800 px-2 py-1 text-sm text-zinc-200 outline-none placeholder-zinc-600"
+				/>
+			{/if}
 
 			<!-- Mode selector -->
 			<div class="flex rounded bg-zinc-800 text-sm">
@@ -186,9 +202,9 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 			<!-- Share -->
 			<button
 				onclick={share}
-				class="rounded bg-zinc-800 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-700"
+				class="rounded bg-zinc-800 px-3 py-1 text-sm text-zinc-300 hover:bg-zinc-700 transition-colors"
 			>
-				Share
+				{copied ? 'Copied!' : 'Share'}
 			</button>
 
 			<!-- Run -->
@@ -210,20 +226,23 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 		</div>
 	</header>
 
-	<!-- Body -->
-	<div class="flex flex-1 overflow-hidden">
+	<!-- Main split pane -->
+	<div class="flex flex-1 overflow-hidden min-h-0">
 		<!-- Editor pane -->
-		<div class="flex w-1/2 flex-col border-r border-zinc-800">
-			<div class="border-b border-zinc-800 px-4 py-1.5 text-xs text-zinc-500">main.purus</div>
-			<div class="flex-1 overflow-hidden p-2">
+		<div class="flex w-1/2 min-w-0 flex-col border-r border-zinc-800">
+			<div class="shrink-0 border-b border-zinc-800 px-4 py-1.5 text-xs text-zinc-500 flex items-center gap-2">
+				<span>main.purus</span>
+				<span class="ml-auto opacity-40">Ctrl+Enter to run</span>
+			</div>
+			<div class="flex-1 min-h-0">
 				<Editor bind:value={code} onRun={run} />
 			</div>
 		</div>
 
 		<!-- Output pane -->
-		<div class="flex w-1/2 flex-col">
+		<div class="flex w-1/2 min-w-0 flex-col">
 			<!-- Tabs -->
-			<div class="flex border-b border-zinc-800">
+			<div class="shrink-0 flex border-b border-zinc-800">
 				<button
 					class="px-4 py-1.5 text-xs transition-colors {tab === 'output'
 						? 'border-b-2 border-amber-500 text-white'
@@ -240,26 +259,34 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 				>
 					Compiled JS
 				</button>
+				{#if stderr && tab !== 'output'}
+					<span class="ml-auto self-center pr-3 text-xs text-red-400">● error</span>
+				{/if}
 			</div>
 
-			<div class="flex-1 overflow-auto p-4">
+			<div class="flex-1 overflow-auto p-4 min-h-0" style="font-family: 'Fira Code', monospace;">
 				{#if tab === 'output'}
+					{#if !stdout && !stderr && !running}
+						<p class="text-sm text-zinc-600">
+							Press <kbd class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-zinc-400">Run</kbd>
+							or <kbd class="rounded bg-zinc-800 px-1.5 py-0.5 font-mono text-xs text-zinc-400">Ctrl+Enter</kbd>
+							to execute.
+						</p>
+					{/if}
 					{#if stderr}
-						<div class="mb-3 rounded bg-red-950 p-3">
-							<p class="mb-1 text-xs font-medium text-red-400">Error</p>
-							<pre class="whitespace-pre-wrap font-mono text-sm text-red-300">{stderr}</pre>
+						<div class="mb-3 rounded-md border border-red-800 bg-red-950/50 p-3">
+							<p class="mb-1.5 text-xs font-semibold text-red-400">Compile / Runtime Error</p>
+							<pre class="whitespace-pre-wrap text-sm text-red-300">{stderr}</pre>
 						</div>
 					{/if}
 					{#if stdout}
-						<pre class="whitespace-pre-wrap font-mono text-sm text-zinc-200">{stdout}</pre>
-					{:else if !stderr && !running}
-						<p class="text-sm text-zinc-600">Press <kbd class="rounded bg-zinc-800 px-1">Run</kbd> to execute your code.</p>
+						<pre class="whitespace-pre-wrap text-sm text-zinc-200">{stdout}</pre>
 					{/if}
 				{:else}
 					{#if compiled}
-						<pre class="whitespace-pre-wrap font-mono text-xs text-zinc-400">{compiled}</pre>
+						<pre class="whitespace-pre-wrap text-xs text-zinc-400">{compiled}</pre>
 					{:else}
-						<p class="text-sm text-zinc-600">Compiled JavaScript will appear here.</p>
+						<p class="text-sm text-zinc-600">Compiled JavaScript will appear here after running.</p>
 					{/if}
 				{/if}
 			</div>
@@ -267,10 +294,5 @@ window.parent.postMessage({ type: 'purus-result', stdout: __lines.join('\\n'), s
 	</div>
 </div>
 
-<!-- Hidden iframe for browser sandbox -->
-<iframe
-	bind:this={iframeRef}
-	title="sandbox"
-	sandbox="allow-scripts"
-	class="hidden"
-></iframe>
+<!-- Browser sandbox iframe -->
+<iframe bind:this={iframeRef} title="sandbox" sandbox="allow-scripts" class="hidden" aria-hidden="true"></iframe>
