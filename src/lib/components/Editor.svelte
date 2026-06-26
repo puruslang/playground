@@ -95,11 +95,8 @@
 						: [
 							keymap.of([
 								indentWithTab,
-								{
-									key: 'Ctrl-Enter',
-									mac: 'Mod-Enter',
-									run: () => { onRun?.(); return true; }
-								}
+								{ key: 'Mod-Enter',  run: () => { onRun?.(); return true; } },
+								{ key: 'Ctrl-Enter', run: () => { onRun?.(); return true; } }
 							]),
 							EditorView.updateListener.of((update) => {
 								if (update.docChanged) {
