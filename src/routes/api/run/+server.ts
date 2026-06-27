@@ -1,35 +1,61 @@
 import { json, error } from '@sveltejs/kit';
 import type { RequestHandler } from './$types';
 import vm from 'vm';
-import { spawnSync } from 'child_process'; // execSync not needed; spawnSync avoids shell injection
+import { spawnSync } from 'child_process';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { createRequire } from 'module';
 
 const TIMEOUT_MS = 5000;
 
-// ── Bundled compiler (the version installed as a dependency) ──────────────
-// We use a dynamic import so it doesn't fail at module-parse time if missing.
-let bundledCompiler: { compile: (src: string) => string } | null = null;
+// ── Types ─────────────────────────────────────────────────────────────────
+interface CompileOpts { strict?: boolean; type?: string; header?: boolean; cjs?: boolean }
+type Compiler = { compile: (src: string, opts?: CompileOpts) => string };
+
+// ── Config parser ─────────────────────────────────────────────────────────
+function parseConfig(content: string): CompileOpts {
+	const opts: CompileOpts = { header: false };
+	for (const line of content.split('\n')) {
+		const t = line.trim();
+		if (!t || t.startsWith('--')) continue;
+		const m = t.match(/^const\s+([\w.-]+)\s+be\s+(.+)$/);
+		if (!m) continue;
+		const key = m[1];
+		let val: string | boolean = m[2].trim();
+		// Support both ///.../// and //;...;// string formats
+		if (val.startsWith('///') && val.endsWith('///')) val = val.slice(3, -3);
+		else if (val.startsWith('//;') && val.endsWith(';//')) val = val.slice(3, -3);
+		else if (val === 'true') val = true;
+		else if (val === 'false') val = false;
+		if (key === 'strict') opts.strict = val as boolean;
+		if (key === 'type') {
+			opts.type = val as string;
+			opts.cjs = (val as string) === 'commonjs';
+		}
+	}
+	return opts;
+}
+
+// ── Bundled compiler ──────────────────────────────────────────────────────
+let bundledCompiler: Compiler | null = null;
 let bundledVersion = 'unknown';
 
 async function loadBundled() {
 	if (bundledCompiler) return;
 	try {
 		const mod = await import('purus');
-		bundledCompiler = mod as unknown as { compile: (src: string) => string };
-		// Read installed version via createRequire (avoids JSON import attribute issues)
+		bundledCompiler = mod as unknown as Compiler;
 		const req = createRequire(import.meta.url);
 		bundledVersion = (req('purus/package.json') as { version: string }).version;
 	} catch {
-		// Will fail gracefully — bundledCompiler stays null
+		// bundledCompiler stays null
 	}
 }
 
-// ── Cache for dynamically installed versions ──────────────────────────────
-const installedCache = new Map<string, { compile: (src: string) => string }>();
+// ── Dynamic install (older versions) ─────────────────────────────────────
+const installedCache = new Map<string, Compiler>();
 
-function installVersion(version: string): { compile: (src: string) => string } {
+function installVersion(version: string): Compiler {
 	if (installedCache.has(version)) return installedCache.get(version)!;
 
 	const dir = `/tmp/purus-v${version}`;
@@ -41,13 +67,11 @@ function installVersion(version: string): { compile: (src: string) => string } {
 			join(dir, 'package.json'),
 			JSON.stringify({ name: 'tmp', version: '0.0.0', dependencies: { purus: version } })
 		);
-
 		const result = spawnSync('npm', ['install', '--prefix', dir, '--no-save', '--quiet'], {
 			timeout: 30_000,
 			encoding: 'utf8',
 			env: { ...process.env, npm_config_cache: '/tmp/.npm-cache' }
 		});
-
 		if (result.status !== 0) {
 			throw new Error(
 				`npm install purus@${version} failed. ` +
@@ -57,21 +81,16 @@ function installVersion(version: string): { compile: (src: string) => string } {
 	}
 
 	const req = createRequire(modPath);
-	const mod = req(modPath) as { compile: (src: string) => string };
+	const mod = req(modPath) as Compiler;
 	installedCache.set(version, mod);
 	return mod;
 }
 
-// ── Pick compiler ─────────────────────────────────────────────────────────
-async function getCompiler(version: string): Promise<{ compile: (src: string) => string }> {
+async function getCompiler(version: string): Promise<Compiler> {
 	await loadBundled();
-
-	// Use bundled package for 'latest' or the exact installed version
 	if (bundledCompiler && (version === 'latest' || version === bundledVersion)) {
 		return bundledCompiler;
 	}
-
-	// Specific older version → dynamic install
 	return installVersion(version);
 }
 
@@ -79,7 +98,6 @@ async function getCompiler(version: string): Promise<{ compile: (src: string) =>
 function runInNode(js: string): { stdout: string; stderr: string } {
 	const lines: string[] = [];
 	const errs: string[] = [];
-
 	const ctx = vm.createContext({
 		console: {
 			log:   (...a: unknown[]) => lines.push(a.map(String).join(' ')),
@@ -99,13 +117,11 @@ function runInNode(js: string): { stdout: string; stderr: string } {
 			exit: () => {}
 		}
 	});
-
 	try {
 		new vm.Script(js).runInContext(ctx, { timeout: TIMEOUT_MS });
 	} catch (e: unknown) {
 		errs.push(e instanceof Error ? e.message : String(e));
 	}
-
 	return { stdout: lines.join('\n'), stderr: errs.join('\n') };
 }
 
@@ -119,46 +135,34 @@ export const POST: RequestHandler = async ({ request }) => {
 		version?: string;
 		mode?: 'node' | 'browser' | 'compile';
 	};
+	const configContent: string = typeof body.config === 'string' ? body.config : '';
 
 	if (code.length > 50_000) throw error(413, 'Code too large');
 	if (!/^[\d.]+$|^latest$/.test(version)) throw error(400, 'Invalid version');
 
-	let compiler: { compile: (src: string) => string };
+	let compiler: Compiler;
 	try {
 		compiler = await getCompiler(version);
 	} catch (e) {
-		return json({
-			success: false, compiled: '', stdout: '',
-			stderr: `Compiler load failed: ${e}`,
-			mode
-		});
+		return json({ success: false, compiled: '', stdout: '', stderr: `Compiler load failed: ${e}`, mode });
 	}
 
 	if (!compiler?.compile) {
-		return json({
-			success: false, compiled: '', stdout: '',
-			stderr: 'Compiler not available. Please try the default version.',
-			mode
-		});
+		return json({ success: false, compiled: '', stdout: '', stderr: 'Compiler not available. Please try the default version.', mode });
 	}
+
+	// Apply config.purus options to compilation
+	const compileOpts = parseConfig(configContent);
 
 	let compiled: string;
 	try {
-		compiled = compiler.compile(code);
+		compiled = compiler.compile(code, compileOpts);
 	} catch (e: unknown) {
-		return json({
-			success: false, compiled: '', stdout: '',
-			stderr: e instanceof Error ? e.message : String(e),
-			mode
-		});
+		return json({ success: false, compiled: '', stdout: '', stderr: e instanceof Error ? e.message : String(e), mode });
 	}
 
-	if (mode === 'compile') {
-		return json({ success: true, compiled, stdout: '', stderr: '', mode });
-	}
-	if (mode === 'browser') {
-		return json({ success: true, compiled, stdout: '', stderr: '', mode });
-	}
+	if (mode === 'compile') return json({ success: true, compiled, stdout: '', stderr: '', mode });
+	if (mode === 'browser') return json({ success: true, compiled, stdout: '', stderr: '', mode });
 
 	const { stdout, stderr } = runInNode(compiled);
 	return json({ success: true, compiled, stdout, stderr, mode });

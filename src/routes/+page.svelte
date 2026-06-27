@@ -88,6 +88,7 @@ const strict be true
 				headers: { 'Content-Type': 'application/json' },
 				body: JSON.stringify({
 					code: files['main.purus'],
+					config: files['config.purus'] ?? '',
 					version: version || 'latest',
 					mode: runMode
 				})
