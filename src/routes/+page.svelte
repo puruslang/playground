@@ -323,7 +323,9 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 					{/if}
 				{:else}
 					{#if compiled}
-						<pre class="compiled">{compiled}</pre>
+						<div style="height:100%; margin:-16px;">
+							<Editor value={compiled} lang="js" readonly />
+						</div>
 					{:else}
 						<p class="placeholder">Compiled JavaScript will appear here.</p>
 					{/if}
