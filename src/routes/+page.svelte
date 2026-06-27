@@ -24,8 +24,6 @@ for n in nums
 
 	const DEFAULT_CONFIG = `-- config.purus
 const type be ///module///
-const entry be ///src///
-const outDir be ///dist///
 const strict be true
 `;
 
