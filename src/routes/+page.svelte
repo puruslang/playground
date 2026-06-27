@@ -8,8 +8,8 @@
 	let { data }: { data: PageData } = $props();
 
 	const DEFAULT_MAIN = `-- Purus Playground
-const name be //;World;//
-const greeting be //;Hello, [name]!;//
+const name be ///World///
+const greeting be ///Hello, [name]!///
 console.log[greeting]
 
 -- Named functions need "to return" for a return value
@@ -23,9 +23,9 @@ for n in nums
 `;
 
 	const DEFAULT_CONFIG = `-- config.purus
-const type be //;module;//
-const entry be //;src;//
-const outDir be //;dist;//
+const type be ///module///
+const entry be ///src///
+const outDir be ///dist///
 const strict be true
 `;
 
@@ -40,6 +40,8 @@ const strict be true
 		'config.purus': DEFAULT_CONFIG
 	});
 	let currentFile = $state('main.purus');
+	// editorKey increments to force Editor remount (used by Clear)
+	let editorKey = $state(0);
 
 	// Run settings
 	let version = $state(defaultVersion);
@@ -141,6 +143,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 
 	function clearFile() {
 		files = { ...files, [currentFile]: '' };
+		editorKey += 1; // force Editor remount so content resets visually
 	}
 
 	function share() {
@@ -148,9 +151,33 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 		url.searchParams.set('code', btoa(unescape(encodeURIComponent(files['main.purus']))));
 		url.searchParams.set('v', version);
 		url.searchParams.set('m', mode);
-		navigator.clipboard.writeText(url.toString()).catch(() => {});
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
+		const text = url.toString();
+
+		if (navigator.clipboard?.writeText) {
+			navigator.clipboard.writeText(text)
+				.then(() => { copied = true; setTimeout(() => (copied = false), 2000); })
+				.catch(() => fallbackShare(text));
+		} else {
+			fallbackShare(text);
+		}
+	}
+
+	function fallbackShare(text: string) {
+		// Fallback: show URL in a prompt so user can copy manually
+		try {
+			const ta = document.createElement('textarea');
+			ta.value = text;
+			ta.style.cssText = 'position:fixed;opacity:0;top:0;left:0;';
+			document.body.appendChild(ta);
+			ta.focus();
+			ta.select();
+			document.execCommand('copy');
+			document.body.removeChild(ta);
+			copied = true;
+			setTimeout(() => (copied = false), 2000);
+		} catch {
+			prompt('Copy this URL:', text);
+		}
 	}
 
 	let copied = $state(false);
@@ -252,7 +279,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 				<span class="hint-text">Ctrl+Enter to run</span>
 			</div>
 			<div class="editor-wrap">
-				{#key currentFile}
+				{#key `${currentFile}-${editorKey}`}
 					<Editor
 						value={currentCode}
 						onvalue={setCurrentCode}
@@ -296,9 +323,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 					{/if}
 				{:else}
 					{#if compiled}
-						<div style="height:100%; margin:-16px;">
-							<Editor value={compiled} lang="js" readonly />
-						</div>
+						<pre class="compiled">{compiled}</pre>
 					{:else}
 						<p class="placeholder">Compiled JavaScript will appear here.</p>
 					{/if}
