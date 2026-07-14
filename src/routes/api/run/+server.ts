@@ -5,12 +5,13 @@ import { spawnSync } from 'child_process';
 import { mkdirSync, existsSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { createRequire } from 'module';
+import { tmpdir } from 'os';
 
 const TIMEOUT_MS = 5000;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 interface CompileOpts { strict?: boolean; type?: string; header?: boolean; cjs?: boolean }
-type Compiler = { compile: (src: string, opts?: CompileOpts) => string };
+type Compiler = { compile: (src: string, opts?: CompileOpts) => string; version?: string };
 
 // ── Config parser ─────────────────────────────────────────────────────────
 function parseConfig(content: string): CompileOpts {
@@ -45,8 +46,7 @@ async function loadBundled() {
 	try {
 		const mod = await import('purus');
 		bundledCompiler = mod as unknown as Compiler;
-		const req = createRequire(import.meta.url);
-		bundledVersion = (req('purus/package.json') as { version: string }).version;
+		bundledVersion = bundledCompiler.version ?? 'unknown';
 	} catch {
 		// bundledCompiler stays null
 	}
@@ -58,7 +58,7 @@ const installedCache = new Map<string, Compiler>();
 function installVersion(version: string): Compiler {
 	if (installedCache.has(version)) return installedCache.get(version)!;
 
-	const dir = `/tmp/purus-v${version}`;
+	const dir = join(tmpdir(), `purus-v${version}`);
 	const modPath = join(dir, 'node_modules', 'purus', 'pkg', 'index.js');
 
 	if (!existsSync(modPath)) {
@@ -67,10 +67,14 @@ function installVersion(version: string): Compiler {
 			join(dir, 'package.json'),
 			JSON.stringify({ name: 'tmp', version: '0.0.0', dependencies: { purus: version } })
 		);
+		// `version` is validated as `\d+(\.\d+)*` or "latest" before reaching here (see POST handler),
+		// so it's safe to pass through shell:true — needed on Windows, where npm is a .cmd shim
+		// that Node can't exec directly without a shell.
 		const result = spawnSync('npm', ['install', '--prefix', dir, '--no-save', '--quiet'], {
 			timeout: 30_000,
 			encoding: 'utf8',
-			env: { ...process.env, npm_config_cache: '/tmp/.npm-cache' }
+			shell: true,
+			env: { ...process.env, npm_config_cache: join(tmpdir(), '.npm-cache') }
 		});
 		if (result.status !== 0) {
 			throw new Error(

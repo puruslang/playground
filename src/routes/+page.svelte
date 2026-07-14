@@ -51,6 +51,8 @@ const strict be true
 	let stdout = $state('');
 	let stderr = $state('');
 	let tab = $state<'output' | 'compiled'>('output');
+	// Mobile-only: which pane (editor/output) is shown when stacked
+	let mobileView = $state<'editor' | 'output'>('editor');
 
 	let iframeRef: HTMLIFrameElement;
 
@@ -79,6 +81,7 @@ const strict be true
 		stdout = '';
 		stderr = '';
 		tab = runMode === 'compile' ? 'compiled' : 'output';
+		mobileView = 'output';
 
 		try {
 			const res = await fetch('/api/run', {
@@ -262,6 +265,20 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 		</div>
 	</header>
 
+	<!-- ── Mobile Code/Output switch ── -->
+	<div class="mobile-tabs">
+		<button
+			class="mobile-tab {mobileView === 'editor' ? 'active' : ''}"
+			onclick={() => (mobileView = 'editor')}>Code</button
+		>
+		<button
+			class="mobile-tab {mobileView === 'output' ? 'active' : ''}"
+			onclick={() => (mobileView = 'output')}
+		>
+			Output{#if stderr}<span class="err-dot-inline"></span>{/if}
+		</button>
+	</div>
+
 	<!-- ── Body ── -->
 	<div class="body">
 		<!-- File tree -->
@@ -272,7 +289,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 		/>
 
 		<!-- Editor pane -->
-		<div class="editor-pane">
+		<div class="editor-pane {mobileView !== 'editor' ? 'mobile-hide' : ''}">
 			<div class="pane-bar">
 				<span class="filename">{currentFile}</span>
 				<span class="hint-text">Ctrl+Enter to run</span>
@@ -290,7 +307,7 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 		</div>
 
 		<!-- Output pane -->
-		<div class="output-pane">
+		<div class="output-pane {mobileView !== 'output' ? 'mobile-hide' : ''}">
 			<div class="pane-bar tabs">
 				<button
 					class="tab {tab === 'output' ? 'active' : ''}"
@@ -544,4 +561,58 @@ window.parent.postMessage({type:'purus-result',stdout:__l.join('\\n'),stderr:__e
 	.compiled { color: #a1a1aa; white-space: pre-wrap; margin: 0; font-size: 12px; }
 
 	.hidden { display: none; }
+
+	/* Mobile Code/Output switch (hidden on desktop) */
+	.mobile-tabs { display: none; }
+	.err-dot-inline {
+		display: inline-block;
+		width: 6px;
+		height: 6px;
+		margin-left: 6px;
+		border-radius: 50%;
+		background: #f87171;
+	}
+
+	/* ── Mobile layout ── */
+	@media (max-width: 768px) {
+		.header {
+			height: auto;
+			flex-wrap: wrap;
+			row-gap: 8px;
+			padding: 8px 12px;
+		}
+		.docs-link { display: none; }
+		.header-right {
+			width: 100%;
+			margin-left: 0;
+		}
+		.hint { display: none; }
+		.hint-text { display: none; }
+
+		.mobile-tabs {
+			display: flex;
+			flex-shrink: 0;
+			border-bottom: 1px solid #27272a;
+		}
+		.mobile-tab {
+			flex: 1;
+			background: #111113;
+			border: none;
+			color: #71717a;
+			padding: 10px;
+			font-size: 13px;
+			font-weight: 600;
+			cursor: pointer;
+			border-bottom: 2px solid transparent;
+		}
+		.mobile-tab.active { color: #fff; border-bottom-color: #f59e0b; }
+
+		.body { flex-direction: column; }
+
+		.editor-pane, .output-pane {
+			width: 100%;
+			border-right: none;
+		}
+		.editor-pane.mobile-hide, .output-pane.mobile-hide { display: none; }
+	}
 </style>

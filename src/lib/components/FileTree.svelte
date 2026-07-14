@@ -81,4 +81,29 @@
 		overflow: hidden;
 		text-overflow: ellipsis;
 	}
+
+	@media (max-width: 768px) {
+		.file-tree {
+			width: 100%;
+			min-width: 0;
+			flex-direction: row;
+			overflow-x: auto;
+			overflow-y: hidden;
+			border-right: none;
+			border-bottom: 1px solid #3f3f46;
+		}
+		.tree-header {
+			display: none;
+		}
+		.tree-item {
+			width: auto;
+			flex-shrink: 0;
+			padding: 8px 12px;
+			border-bottom: 2px solid transparent;
+		}
+		.tree-item.active {
+			background: none;
+			border-bottom-color: #f59e0b;
+		}
+	}
 </style>
